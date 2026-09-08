@@ -10,7 +10,15 @@ const AUTH_TOKEN = process.env.AUTH_TOKEN; // 小程序连接时 ?token=xxx 简�
 // HTTP 层仅用于健康检查/唤醒（Render 免费档休眠后浏览器访问一次即可唤醒）
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ status: 'ok', service: 'meeting-translator-relay' }));
+  res.end(JSON.stringify({
+    status: 'ok',
+    service: 'meeting-translator-relay',
+    env: {
+      AUTH_TOKEN: Boolean(process.env.AUTH_TOKEN),
+      VOLC_API_KEY: Boolean(process.env.VOLC_API_KEY),
+      LLM_API_KEY: Boolean(process.env.LLM_API_KEY),
+    },
+  }));
 });
 
 const wss = new WebSocketServer({ server });
