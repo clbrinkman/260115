@@ -9,15 +9,12 @@ services:
     healthCheckPath: /
     envVars:
       # 以下密钥在 Render Dashboard 手动填，不入库
+      - key: VOLC_API_KEY
+        sync: false
       - key: AUTH_TOKEN
         sync: false
-      - key: VOLC_APP_KEY
-        sync: false
-      - key: VOLC_ACCESS_KEY
-        sync: false
-      - key: VOLC_RESOURCE_ID
-        sync: false
-      - key: ARK_API_KEY
-        sync: false
-      - key: ARK_MODEL
-        sync: false
+      # 翻译语种，有默认值，可按需改
+      - key: SOURCE_LANG
+        value: zh
+      - key: TARGET_LANG
+        value: en
