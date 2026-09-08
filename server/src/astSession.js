@@ -7,6 +7,7 @@ const path = require('path');
 const WebSocket = require('ws');
 const crypto = require('crypto');
 const protobuf = require('protobufjs');
+const { summarizeMeeting } = require('./summarize');
 
 const AST_URL = 'wss://openspeech.bytedance.com/api/v4/ast/v2/translate';
 const RESOURCE_ID = 'volc.service_type.10053';
@@ -51,6 +52,7 @@ class AstSession {
     this.zhByUtterance = new Map(); // start_time -> 原文定句
     this.lastAudioAt = 0;
     this.keepalive = null;
+    this.transcript = []; // 定句累积：{speaker, text}，供会议纪要
   }
 
   meta() {
@@ -159,10 +161,12 @@ class AstSession {
       const id = res.startTime ?? this.currentUtteranceId;
       this.lastSourceId = id;
       this.zhByUtterance.set(id, res.text || this.zhAcc);
+      const finalText = res.text || this.zhAcc;
+      if (finalText) this.transcript.push({ speaker: this.speakerIndex, text: finalText });
       this.send({
         type: 'interim',
         utterances: [
-          { id, text: res.text || this.zhAcc, definite: true, speaker: this.speakerIndex },
+          { id, text: finalText, definite: true, speaker: this.speakerIndex },
         ],
       });
       return;
@@ -189,6 +193,13 @@ class AstSession {
       return;
     }
     // UsageResponse(154)/AudioMuted(250) 等忽略
+  }
+
+  summarize() {
+    this.send({ type: 'summary_loading' });
+    summarizeMeeting(this.transcript)
+      .then((text) => this.send({ type: 'summary', text }))
+      .catch((e) => this.send({ type: 'summary', text: '', error: e.message }));
   }
 
   pushAudio(pcmBuffer) {

@@ -4,7 +4,10 @@
     <view class="live {{recording ? 'on' : 'off'}}">
       <view class="live-dot"></view>LIVE
     </view>
-    <view class="theme-toggle" bindtap="toggleTheme">{{theme === 'dark' ? '☾' : '☀'}}</view>
+    <view class="nav-right">
+      <view class="summary-entry" bindtap="onSummary">✦ 纪要</view>
+      <view class="theme-toggle" bindtap="toggleTheme">{{theme === 'dark' ? '☾' : '☀'}}</view>
+    </view>
   </view>
 
   <scroll-view class="transcript" scroll-y scroll-into-view="{{scrollInto}}" scroll-with-animation>
@@ -38,5 +41,19 @@
       <view wx:if="{{recording}}" class="icon-pause"></view>
       <view wx:else class="icon-start"></view>
     </button>
+  </view>
+
+  <!-- 会议纪要面板 -->
+  <view wx:if="{{summaryVisible}}" class="overlay" bindtap="closeSummary">
+    <view class="sheet" catchtap="">
+      <view class="sheet-head">
+        <view class="sheet-title">会议纪要</view>
+        <view class="sheet-close" bindtap="closeSummary">✕</view>
+      </view>
+      <scroll-view class="sheet-body" scroll-y>
+        <view wx:if="{{summaryLoading}}" class="sheet-loading">正在整理本场会议…</view>
+        <view wx:else class="sheet-text">{{summaryText}}</view>
+      </scroll-view>
+    </view>
   </view>
 </view>

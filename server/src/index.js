@@ -49,6 +49,8 @@ wss.on('connection', (ws, req) => {
       session.connect();
     } else if (msg.type === 'stop') {
       session?.finishAudio(); // 发最后一包，等定句结果回来
+    } else if (msg.type === 'summarize') {
+      session?.summarize();
     }
   });
 

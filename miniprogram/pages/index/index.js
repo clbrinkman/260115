@@ -14,6 +14,9 @@ Page({
     scrollInto: '',
     seq: 0,
     statusText: '点击开始',
+    summaryVisible: false,
+    summaryLoading: false,
+    summaryText: '',
   },
 
   onLoad() {
@@ -34,6 +37,19 @@ Page({
 
   toggleTheme() {
     this.setData({ theme: this.data.theme === 'dark' ? 'light' : 'dark' });
+  },
+
+  onSummary() {
+    if (!this.socketOpen) {
+      this.setData({ summaryVisible: true, summaryLoading: false, summaryText: '会话已结束，纪要仅在会议进行中（含暂停）可用。' });
+      return;
+    }
+    this.setData({ summaryVisible: true, summaryLoading: true, summaryText: '' });
+    wx.sendSocketMessage({ data: JSON.stringify({ type: 'summarize' }) });
+  },
+
+  closeSummary() {
+    this.setData({ summaryVisible: false });
   },
 
   onMainButton() {
@@ -153,6 +169,19 @@ Page({
           [...this.data.items, { id: msg.id, zh: msg.zh, en: msg.en, ...this.speakerStyle(null) }];
       const seq = this.data.seq + 1;
       this.setData({ items, seq, scrollInto: `tail-${seq}` });
+      return;
+    }
+
+    if (msg.type === 'summary_loading') {
+      this.setData({ summaryLoading: true });
+      return;
+    }
+
+    if (msg.type === 'summary') {
+      this.setData({
+        summaryLoading: false,
+        summaryText: msg.error ? `生成失败：${msg.error}` : msg.text,
+      });
       return;
     }
 
