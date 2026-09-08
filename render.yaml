@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: meeting-translator
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm install
+    startCommand: node src/index.js
+    healthCheckPath: /
+    envVars:
+      # 以下密钥在 Render Dashboard 手动填，不入库
+      - key: AUTH_TOKEN
+        sync: false
+      - key: VOLC_APP_KEY
+        sync: false
+      - key: VOLC_ACCESS_KEY
+        sync: false
+      - key: VOLC_RESOURCE_ID
+        sync: false
+      - key: ARK_API_KEY
+        sync: false
+      - key: ARK_MODEL
+        sync: false
