@@ -2,7 +2,7 @@
 require('dotenv').config();
 const http = require('http');
 const { WebSocketServer } = require('ws');
-const { AsrSession } = require('./asrSession');
+const { AstSession } = require('./astSession');
 
 const PORT = Number(process.env.PORT || 8080);
 const AUTH_TOKEN = process.env.AUTH_TOKEN; // 小程序连接时 ?token=xxx 简单鉴权
@@ -45,7 +45,7 @@ wss.on('connection', (ws, req) => {
       return;
     }
     if (msg.type === 'start') {
-      session = new AsrSession(send);
+      session = new AstSession(send);
       session.connect();
       send({ type: 'session_started' });
     } else if (msg.type === 'stop') {

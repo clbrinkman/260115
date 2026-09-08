@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "dotenv": "^16.4.5",
+    "protobufjs": "^8.8.0",
     "ws": "^8.18.0"
   }
 }

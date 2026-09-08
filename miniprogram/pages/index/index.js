@@ -146,9 +146,11 @@ Page({
     }
 
     if (msg.type === 'translation') {
-      const items = this.data.items.map((i) =>
-        i.id === msg.id ? { ...i, en: msg.en } : i
-      );
+      const found = this.data.items.some((i) => i.id === msg.id);
+      const items = found
+        ? this.data.items.map((i) => (i.id === msg.id ? { ...i, en: msg.en } : i))
+        : // 译文先于原文到达的兜底：直接补一条
+          [...this.data.items, { id: msg.id, zh: msg.zh, en: msg.en, ...this.speakerStyle(null) }];
       const seq = this.data.seq + 1;
       this.setData({ items, seq, scrollInto: `tail-${seq}` });
       return;

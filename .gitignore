@@ -39,3 +39,6 @@ coverage.out
 
 # OS
 Thumbs.db
+
+# 本地文档抽取物
+tools/*.txt
