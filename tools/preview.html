@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>同传间 · 会议实时转译</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* R ColorBrewer Set3 */
+    --c0:#8DD3C7; --c1:#FFFFB3; --c2:#BEBADA; --c3:#FB8072;
+    --c4:#80B1D3; --c5:#FDB462; --c6:#B3DE69; --c7:#FCCDE5;
+    --c8:#D9D9D9; --c9:#BC80BD; --c10:#CCEBC5; --c11:#FFED6F;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    min-height: 100vh;
+    background: #08090c;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    font-family: "Bricolage Grotesque", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background-image: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(128,177,211,.08), transparent);
+  }
+  .page-title {
+    color: #eceff4;
+    font-weight: 300;
+    font-size: 15px;
+    letter-spacing: .5em;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+  .page-sub {
+    color: #5a6373;
+    font-size: 12px;
+    letter-spacing: .25em;
+    margin-bottom: 40px;
+  }
+  .row { display: flex; gap: 48px; flex-wrap: wrap; justify-content: center; }
+  .theme-label {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 11px;
+    letter-spacing: .35em;
+    text-transform: uppercase;
+  }
+
+  /* ============ 手机框 ============ */
+  .phone {
+    width: 360px;
+    height: 760px;
+    border-radius: 40px;
+    overflow: hidden;
+    border: 6px solid #000;
+    box-shadow: 0 40px 80px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.05);
+    display: flex;
+    flex-direction: column;
+    font-size: 14px;
+    position: relative;
+  }
+  .phone::after { /* 噪点 */
+    content:''; position:absolute; inset:0; pointer-events:none; opacity:.35;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='.05'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ============ 主题 ============ */
+  .dark  { background:#101318; color:#eceff4; }
+  .light { background:#f5f3ec; color:#20242c; }
+
+  .navbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 52px 18px 14px;
+    border-bottom: 1px solid;
+  }
+  .dark .navbar { border-color: rgba(255,255,255,.08); }
+  .light .navbar { border-color: rgba(0,0,0,.08); }
+  .booth { font-size: 12px; letter-spacing: .3em; font-weight: 600; }
+  .live { display:flex; align-items:center; font-size:10px; letter-spacing:.3em; color: inherit; }
+  .live-dot { width:7px; height:7px; border-radius:50%; margin-right:6px; background:#fb8072; animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1; transform:scale(1);} 50%{opacity:.3; transform:scale(.75);} }
+  .toggle { font-size: 15px; opacity:.6; }
+
+  .transcript { flex:1; padding: 18px 18px; overflow-y:auto; position:relative; z-index:1; }
+  .transcript::-webkit-scrollbar { width:0; }
+
+  .utterance { margin-bottom: 20px; animation: rise .45s cubic-bezier(.2,.8,.2,1) both; }
+  .utterance:nth-child(2){ animation-delay:.05s } .utterance:nth-child(4){ animation-delay:.1s }
+  .utterance:nth-child(6){ animation-delay:.15s } .utterance:nth-child(8){ animation-delay:.2s }
+  @keyframes rise { from { opacity:0; transform: translateY(10px); } }
+  .divider { height:1px; margin: -6px 0 16px; }
+  .dark .divider { background: rgba(255,255,255,.06); }
+  .light .divider { background: rgba(0,0,0,.07); }
+
+  .chip {
+    display:inline-block; font-size:10px; font-weight:600; letter-spacing:.18em;
+    color:#22242a; padding:4px 11px; border-radius:999px; margin-bottom:8px;
+  }
+  .c0{background:var(--c0)} .c4{background:var(--c4)} .c6{background:var(--c6)} .c3{background:var(--c3)} .c9{background:var(--c9)}
+
+  .zh {
+    font-family: "Songti SC", "STSong", "Noto Serif SC", "SimSun", serif;
+    font-size:15.5px; line-height:1.6; font-weight:600;
+  }
+  .light .zh { font-weight: 500; }
+  .en {
+    font-family:"Fraunces", Georgia, serif; font-style: italic;
+    font-size:13px; margin-top:6px; line-height:1.5;
+  }
+  .dark .en { color:#93a7c4; }
+  .light .en { color:#5d6f8c; }
+  .en.pending { font-style: normal; font-family: inherit; font-size:11px; letter-spacing:.1em; }
+  .dark .en.pending { color:#5a6373; }
+  .light .en.pending { color:#a8aeba; }
+
+  .interim .zh { font-weight:400; }
+  .dark .interim .zh { color:#9aa3b2; }
+  .light .interim .zh { color:#6b7280; }
+  .interim .zh::after { content:'▌'; color:#fb8072; animation: pulse 1s infinite; font-size:.85em; margin-left:2px; }
+
+  .footer {
+    padding: 12px 16px 30px;
+    display:flex; flex-direction:column; align-items:center;
+    position:relative; z-index:1;
+  }
+  .dark .footer { background:#0b0d11; }
+  .light .footer { background:#edeae0; }
+  .status { font-size:10px; letter-spacing:.35em; margin-bottom:14px; }
+  .dark .status { color:#7a8494; }
+  .light .status { color:#8a8f9a; }
+
+  .btn {
+    width:62px; height:62px; border-radius:50%; border:none; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .btn:hover { transform: scale(1.06); }
+  .btn:active { transform: scale(.95); }
+  .btn-rec { background:#fb8072; box-shadow: 0 6px 24px rgba(251,128,114,.4); }
+  .icon-pause { width:16px; height:20px; border-left:5px solid #101318; border-right:5px solid #101318; }
+  .btn-idle { background:#eceff4; }
+  .icon-start {
+    width:0; height:0; margin-left:4px;
+    border-left:18px solid #101318;
+    border-top:11px solid transparent; border-bottom:11px solid transparent;
+  }
+</style>
+</head>
+<body>
+
+<div class="page-title">同传间</div>
+<div class="page-sub">MEETING INTERPRET BOOTH · SET3 PALETTE</div>
+
+<div class="row">
+
+  <!-- 深色 -->
+  <div>
+    <div class="phone dark">
+      <div class="navbar">
+        <div class="booth">同传间</div>
+        <div class="live"><div class="live-dot"></div>LIVE</div>
+        <div class="toggle">☾</div>
+      </div>
+      <div class="transcript">
+        <div class="utterance">
+          <div class="chip c0">说话人 1</div>
+          <div class="zh">我们先过一下上个季度的营收数据，整体增长了百分之十二。</div>
+          <div class="en">Let's start with last quarter's revenue — overall growth came in at 12%.</div>
+        </div>
+        <div class="divider"></div>
+        <div class="utterance">
+          <div class="chip c4">说话人 2</div>
+          <div class="zh">增长主要来自华东区，但是退货率也比上个季度高了两个点。</div>
+          <div class="en">The growth came mainly from East China, but the return rate is also up two points QoQ.</div>
+        </div>
+        <div class="divider"></div>
+        <div class="utterance">
+          <div class="chip c0">说话人 1</div>
+          <div class="zh">退货率升高是不是和新的物流供应商有关？</div>
+          <div class="en">Is the higher return rate related to the new logistics provider?</div>
+        </div>
+        <div class="divider"></div>
+        <div class="utterance">
+          <div class="chip c6">说话人 3</div>
+          <div class="zh">我这边拉一下明细数据，会后同步给大家。</div>
+          <div class="en pending">翻译中…</div>
+        </div>
+        <div class="divider"></div>
+        <div class="utterance interim">
+          <div class="chip c4">说话人 2</div>
+          <div class="zh">我觉得还有一部分原因是</div>
+        </div>
+      </div>
+      <div class="footer">
+        <div class="status">转写中</div>
+        <button class="btn btn-rec"><div class="icon-pause"></div></button>
+      </div>
+    </div>
+    <div class="theme-label" style="color:#5a6373">深色 · DARK</div>
+  </div>
+
+  <!-- 浅色 -->
+  <div>
+    <div class="phone light">
+      <div class="navbar">
+        <div class="booth">同传间</div>
+        <div class="live"><div class="live-dot"></div>LIVE</div>
+        <div class="toggle">☀</div>
+      </div>
+      <div class="transcript">
+        <div class="utterance">
+          <div class="chip c0">说话人 1</div>
+          <div class="zh">我们先过一下上个季度的营收数据，整体增长了百分之十二。</div>
+          <div class="en">Let's start with last quarter's revenue — overall growth came in at 12%.</div>
+        </div>
+        <div class="divider"></div>
+        <div class="utterance">
+          <div class="chip c4">说话人 2</div>
+          <div class="zh">增长主要来自华东区，但是退货率也比上个季度高了两个点。</div>
+          <div class="en">The growth came mainly from East China, but the return rate is also up two points QoQ.</div>
+        </div>
+        <div class="divider"></div>
+        <div class="utterance">
+          <div class="chip c0">说话人 1</div>
+          <div class="zh">退货率升高是不是和新的物流供应商有关？</div>
+          <div class="en">Is the higher return rate related to the new logistics provider?</div>
+        </div>
+        <div class="divider"></div>
+        <div class="utterance">
+          <div class="chip c6">说话人 3</div>
+          <div class="zh">我这边拉一下明细数据，会后同步给大家。</div>
+          <div class="en pending">翻译中…</div>
+        </div>
+        <div class="divider"></div>
+        <div class="utterance interim">
+          <div class="chip c4">说话人 2</div>
+          <div class="zh">我觉得还有一部分原因是</div>
+        </div>
+      </div>
+      <div class="footer">
+        <div class="status">点击开始</div>
+        <button class="btn btn-idle"><div class="icon-start"></div></button>
+      </div>
+    </div>
+    <div class="theme-label" style="color:#a8aeba">浅色 · LIGHT</div>
+  </div>
+
+</div>
+
+</body>
+</html>

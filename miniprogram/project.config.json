@@ -1,0 +1,12 @@
+{
+  "description": "会议实时转译小程序",
+  "appid": "touristappid",
+  "compileType": "miniprogram",
+  "libVersion": "latest",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "minified": true
+  },
+  "projectname": "meeting-translator"
+}

@@ -1,0 +1,16 @@
+{
+  "pages": ["pages/index/index"],
+  "window": {
+    "navigationBarTitleText": "会议实时转译",
+    "navigationBarBackgroundColor": "#1a1a2e",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#1a1a2e"
+  },
+  "permission": {
+    "scope.record": {
+      "desc": "用于采集会议声音进行实时转写翻译"
+    }
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

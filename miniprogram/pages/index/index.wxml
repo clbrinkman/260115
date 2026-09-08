@@ -1,0 +1,42 @@
+<view class="container theme-{{theme}}">
+  <view class="navbar">
+    <view class="booth">同传间</view>
+    <view class="live {{recording ? 'on' : 'off'}}">
+      <view class="live-dot"></view>LIVE
+    </view>
+    <view class="theme-toggle" bindtap="toggleTheme">{{theme === 'dark' ? '☾' : '☀'}}</view>
+  </view>
+
+  <scroll-view class="transcript" scroll-y scroll-into-view="{{scrollInto}}" scroll-with-animation>
+    <block wx:for="{{items}}" wx:key="id">
+      <view class="utterance">
+        <view class="chip {{item.colorClass}}" wx:if="{{item.speakerLabel}}">{{item.speakerLabel}}</view>
+        <view class="zh">{{item.zh}}</view>
+        <view class="en" wx:if="{{item.en}}">{{item.en}}</view>
+        <view class="en pending" wx:else>翻译中…</view>
+      </view>
+      <view class="divider" wx:if="{{index < items.length - 1 || interim}}"></view>
+    </block>
+
+    <view wx:if="{{interim}}" class="utterance interim">
+      <view class="chip {{interim.colorClass}}" wx:if="{{interim.speakerLabel}}">{{interim.speakerLabel}}</view>
+      <view class="zh">{{interim.text}}</view>
+    </view>
+
+    <view wx:if="{{!items.length && !interim}}" class="empty">麦克风对准会议声音</view>
+    <view id="tail-{{seq}}" class="tail"></view>
+  </scroll-view>
+
+  <view class="footer">
+    <view class="status">{{statusText}}</view>
+    <button
+      class="btn {{recording ? 'btn-rec' : (paused ? 'btn-paused' : 'btn-idle')}}"
+      disabled="{{connecting}}"
+      bindtap="onMainButton"
+      hover-class="none"
+    >
+      <view wx:if="{{recording}}" class="icon-pause"></view>
+      <view wx:else class="icon-start"></view>
+    </button>
+  </view>
+</view>
