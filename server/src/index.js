@@ -3,10 +3,6 @@ require('dotenv').config();
 const http = require('http');
 const { WebSocketServer } = require('ws');
 const { AstSession } = require('./astSession');
-const { MtAsrSession } = require('./mtAsrSession');
-
-const PROVIDER = process.env.ASR_PROVIDER || 'ast'; // ast=火山同传（默认） mt=美团内部ASR+LLM（保底）
-const SessionClass = PROVIDER === 'mt' ? MtAsrSession : AstSession;
 
 const PORT = Number(process.env.PORT || 8080);
 const AUTH_TOKEN = process.env.AUTH_TOKEN; // 小程序连接时 ?token=xxx 简单鉴权
@@ -49,9 +45,7 @@ wss.on('connection', (ws, req) => {
       return;
     }
     if (msg.type === 'start') {
-      // 小程序可用 {type:'start', provider:'mt'} 单次覆盖默认链路
-      const Cls = msg.provider === 'mt' ? MtAsrSession : msg.provider === 'ast' ? AstSession : SessionClass;
-      session = new Cls(send);
+      session = new AstSession(send);
       session.connect();
     } else if (msg.type === 'stop') {
       session?.finishAudio(); // 发最后一包，等定句结果回来
