@@ -142,6 +142,7 @@
 }
 
 .sheet-text {
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
   font-size: 27rpx;
   line-height: 1.8;
   white-space: pre-wrap;

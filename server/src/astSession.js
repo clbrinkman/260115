@@ -49,6 +49,9 @@ class AstSession {
     this.upstream = null;
     this.speakerIndex = 0; // spk_chg 信号累加成说话人编号
     this.currentUtteranceId = 0;
+    this.lastSourceId = null;
+    this.zhAcc = '';
+    this.enAcc = '';
     this.zhByUtterance = new Map(); // start_time -> 原文定句
     this.lastAudioAt = 0;
     this.keepalive = null;

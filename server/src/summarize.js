@@ -8,7 +8,7 @@ async function summarizeMeeting(transcript) {
   // transcript: [{speaker: number|null, text: string}]
   if (!transcript.length) throw new Error('还没有转写内容');
   if (!process.env.LLM_API_KEY) {
-    throw new Error('未配置 LLM_API_KEY（火山方舟 API Key，用于会议纪要）');
+    throw new Error('未配置 LLM_API_KEY（会议纪要用的 LLM Key，默认 DeepSeek）');
   }
 
   let lines = transcript.map((u) => {
