@@ -21,7 +21,7 @@ async function summarizeMeeting(transcript) {
     text = '……（前文略）\n' + text.slice(-MAX_TRANSCRIPT_CHARS);
   }
 
-  const baseUrl = process.env.LLM_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+  const baseUrl = process.env.LLM_BASE_URL || 'https://api.deepseek.com';
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -29,7 +29,7 @@ async function summarizeMeeting(transcript) {
       Authorization: `Bearer ${process.env.LLM_API_KEY}`,
     },
     body: JSON.stringify({
-      model: process.env.LLM_MODEL || 'doubao-seed-1-6-250615',
+      model: process.env.LLM_MODEL || 'deepseek-chat',
       messages: [
         {
           role: 'system',
