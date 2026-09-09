@@ -40,11 +40,12 @@ Page({
     this.ttsPlaying = false;
     this.ttsSerial = 0;
     this.suppressMicUpload = false;
+    this.micResumeTimer = null;
 
     this.recorder.onFrameRecorded((res) => {
       this.audioFrameCount += 1;
       if (this.socketOpen && this.data.recording && !this.suppressMicUpload) {
-        wx.sendSocketMessage({ data: res.frameBuffer });
+        this.sendSocket(res.frameBuffer);
       }
     });
     this.recorder.onStart(() => {
@@ -63,20 +64,6 @@ Page({
     });
     this.recorder.onInterruptionBegin(() => this.pause());
 
-    // onSocket* 是全局监听，只注册一次；重复注册会叠加回调
-    wx.onSocketOpen(() => {
-      this.socketOpen = true;
-      wx.sendSocketMessage({ data: JSON.stringify({ type: 'start' }) });
-    });
-    wx.onSocketMessage((res) => this.onServerMessage(JSON.parse(res.data)));
-    wx.onSocketError(() => {
-      this.socketOpen = false;
-      this.setData({ statusText: '连接失败，检查服务器地址', connecting: false });
-    });
-    wx.onSocketClose(() => {
-      this.socketOpen = false;
-      this.setData({ recording: false, paused: false, statusText: '连接已断开' });
-    });
   },
 
   toggleTheme() {
@@ -86,7 +73,7 @@ Page({
   onSummary() {
     this.setData({ summaryVisible: true, summaryLoading: true, summaryText: '' });
     if (this.socketOpen) {
-      wx.sendSocketMessage({ data: JSON.stringify({ type: 'summarize' }) });
+      this.sendSocket(JSON.stringify({ type: 'summarize' }));
       return;
     }
     // 会话已结束：用本地累积的转写走 HTTP 接口换纪要
@@ -149,6 +136,7 @@ Page({
         this.setData({ connecting: true, statusText: '连接中…', items: [], interim: null });
         this.speakerMap.clear();
         this.transcript = [];
+        this.clearTtsPlayback();
         this.connect();
       },
       fail: () => {
@@ -166,9 +154,40 @@ Page({
   },
 
   connect() {
-    wx.connectSocket({
+    const previousTask = this.socketTask;
+    this.socketTask = null;
+    if (previousTask) previousTask.close();
+    const task = wx.connectSocket({
       url: TOKEN ? `${SERVER_URL}?token=${TOKEN}` : SERVER_URL,
     });
+    this.socketTask = task;
+    task.onOpen(() => {
+      if (this.socketTask !== task) return;
+      this.socketOpen = true;
+      this.sendSocket(JSON.stringify({ type: 'start' }));
+    });
+    task.onMessage((res) => {
+      if (this.socketTask !== task) return;
+      try {
+        this.onServerMessage(JSON.parse(res.data));
+      } catch (err) {
+        console.error('服务端消息解析失败', err);
+      }
+    });
+    task.onError(() => {
+      if (this.socketTask !== task) return;
+      this.socketOpen = false;
+      this.setData({ statusText: '连接失败，检查服务器地址', connecting: false });
+    });
+    task.onClose(() => {
+      if (this.socketTask !== task) return;
+      this.socketOpen = false;
+      this.setData({ recording: false, paused: false, statusText: '连接已断开' });
+    });
+  },
+
+  sendSocket(data) {
+    if (this.socketTask && this.socketOpen) this.socketTask.send({ data });
   },
 
   pause() {
@@ -259,8 +278,8 @@ Page({
     }
 
     if (msg.type === 'error') {
-      this.setData({ statusText: `识别出错: ${msg.message || msg.code}` });
       this.pause();
+      this.setData({ statusText: `识别出错: ${msg.message || msg.code}` });
       return;
     }
 
@@ -272,6 +291,7 @@ Page({
   playNextTts() {
     if (this.ttsPlaying || !this.ttsQueue.length) return;
     this.ttsPlaying = true;
+    clearTimeout(this.micResumeTimer);
     if (this.data.audioMode === 'speaker') {
       this.suppressMicUpload = true;
       this.setData({ statusText: '播放译音 · 防回声中' });
@@ -287,7 +307,12 @@ Page({
         const player = wx.createInnerAudioContext();
         this.ttsPlayer = player;
         player.src = filePath;
+        let finished = false;
         const done = () => {
+          if (finished) return;
+          finished = true;
+          if (this.ttsPlayer !== player) return;
+          this.ttsPlayer = null;
           player.destroy();
           fs.unlink({ filePath, fail: () => {} });
           this.ttsPlaying = false;
@@ -295,7 +320,7 @@ Page({
             this.playNextTts();
           } else {
             // 扬声器和麦克风之间存在声学尾音，稍等再恢复上传。
-            setTimeout(() => {
+            this.micResumeTimer = setTimeout(() => {
               this.suppressMicUpload = false;
               if (this.data.recording) this.setData({ statusText: '转写中…' });
             }, this.data.audioMode === 'speaker' ? 350 : 0);
@@ -317,18 +342,31 @@ Page({
     });
   },
 
+  clearTtsPlayback() {
+    clearTimeout(this.micResumeTimer);
+    this.ttsQueue = [];
+    this.ttsPlaying = false;
+    this.suppressMicUpload = false;
+    if (this.ttsPlayer) {
+      const player = this.ttsPlayer;
+      this.ttsPlayer = null;
+      player.destroy();
+    }
+  },
+
   endSession() {
     if (this.data.recording) this.recorder.stop();
     if (this.socketOpen) {
-      wx.sendSocketMessage({
+      const task = this.socketTask;
+      task.send({
         data: JSON.stringify({ type: 'stop' }),
-        complete: () => setTimeout(() => wx.closeSocket(), 3000),
+        complete: () => setTimeout(() => task.close(), 3000),
       });
     }
   },
 
   onUnload() {
     this.endSession();
-    if (this.ttsPlayer) this.ttsPlayer.destroy();
+    this.clearTtsPlayback();
   },
 });

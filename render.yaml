@@ -4,8 +4,8 @@ services:
     runtime: node
     rootDir: server
     plan: free
-    buildCommand: npm install
-    startCommand: node src/index.js
+    buildCommand: npm ci
+    startCommand: npm start
     healthCheckPath: /
     envVars:
       # 以下密钥在 Render Dashboard 手动填，不入库
@@ -13,6 +13,12 @@ services:
         sync: false
       - key: AUTH_TOKEN
         sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_BASE_URL
+        value: https://api.deepseek.com
+      - key: LLM_MODEL
+        value: deepseek-chat
       # 翻译语种，有默认值，可按需改
       - key: SOURCE_LANG
         value: zh
