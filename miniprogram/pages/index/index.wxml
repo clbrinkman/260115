@@ -31,16 +31,33 @@
   </scroll-view>
 
   <view class="footer">
-    <view class="status">{{statusText}}</view>
-    <button
-      class="btn {{recording ? 'btn-rec' : (paused ? 'btn-paused' : 'btn-idle')}}"
-      disabled="{{connecting}}"
-      bindtap="onMainButton"
-      hover-class="none"
-    >
-      <view wx:if="{{recording}}" class="icon-pause"></view>
-      <view wx:else class="icon-start"></view>
-    </button>
+    <view class="glass-control {{recording ? 'is-recording' : ''}}">
+      <view class="control-copy">
+        <view class="control-kicker">
+          <view class="status-dot"></view>
+          {{recording ? 'LIVE AUDIO' : (paused ? 'ON HOLD' : 'INTERPRETER')}}
+        </view>
+        <view class="status">{{statusText}}</view>
+      </view>
+
+      <view wx:if="{{recording}}" class="wave" aria-hidden="true">
+        <view class="wave-bar b1"></view>
+        <view class="wave-bar b2"></view>
+        <view class="wave-bar b3"></view>
+        <view class="wave-bar b4"></view>
+      </view>
+
+      <button
+        class="btn {{recording ? 'btn-rec' : (paused ? 'btn-paused' : 'btn-idle')}}"
+        disabled="{{connecting}}"
+        bindtap="onMainButton"
+        hover-class="btn-hover"
+        aria-label="{{recording ? '暂停同传' : (paused ? '继续同传' : '开始同传')}}"
+      >
+        <view wx:if="{{recording}}" class="icon-pause"><view></view><view></view></view>
+        <view wx:else class="icon-start"></view>
+      </button>
+    </view>
   </view>
 
   <!-- 会议纪要面板 -->

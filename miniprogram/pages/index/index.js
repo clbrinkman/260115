@@ -22,14 +22,31 @@ Page({
   onLoad() {
     this.recorder = wx.getRecorderManager();
     this.socketOpen = false;
+    this.audioFrameCount = 0;
+    this.audioFrameTimer = null;
     this.speakerMap = new Map();
     this.transcript = []; // {speaker, text} 定句累积，会后纪要兜底用
+    this.ttsQueue = [];
+    this.ttsPlaying = false;
+    this.ttsSerial = 0;
 
     this.recorder.onFrameRecorded((res) => {
       if (this.socketOpen && this.data.recording) {
+        this.audioFrameCount += 1;
         wx.sendSocketMessage({ data: res.frameBuffer });
       }
     });
+    this.recorder.onStart(() => {
+      this.audioFrameCount = 0;
+      clearTimeout(this.audioFrameTimer);
+      this.setData({ recording: true, paused: false, statusText: '转写中…' });
+      this.audioFrameTimer = setTimeout(() => {
+        if (this.data.recording && this.audioFrameCount === 0) {
+          this.setData({ statusText: '未收到声音，请检查麦克风权限' });
+        }
+      }, 3000);
+    });
+    this.recorder.onStop(() => clearTimeout(this.audioFrameTimer));
     this.recorder.onError((err) => {
       this.setData({ statusText: `录音错误: ${err.errMsg}`, recording: false, paused: false });
     });
@@ -115,10 +132,26 @@ Page({
   },
 
   start() {
-    this.setData({ connecting: true, statusText: '连接中…', items: [], interim: null });
-    this.speakerMap.clear();
-    this.transcript = [];
-    this.connect();
+    wx.authorize({
+      scope: 'scope.record',
+      success: () => {
+        this.setData({ connecting: true, statusText: '连接中…', items: [], interim: null });
+        this.speakerMap.clear();
+        this.transcript = [];
+        this.connect();
+      },
+      fail: () => {
+        this.setData({ connecting: false, recording: false, statusText: '需要麦克风权限' });
+        wx.showModal({
+          title: '需要麦克风权限',
+          content: '请在设置中允许录音，否则无法转写。',
+          confirmText: '去设置',
+          success: (res) => {
+            if (res.confirm) wx.openSetting();
+          },
+        });
+      },
+    });
   },
 
   connect() {
@@ -145,13 +178,13 @@ Page({
       return;
     }
     this.startRecorder();
-    this.setData({ recording: true, paused: false, statusText: '转写中…' });
+    this.setData({ statusText: '正在启动麦克风…' });
   },
 
   onServerMessage(msg) {
     if (msg.type === 'session_started') {
       this.startRecorder();
-      this.setData({ recording: true, connecting: false, statusText: '转写中…' });
+      this.setData({ connecting: false, statusText: '正在启动麦克风…' });
       return;
     }
 
@@ -195,6 +228,12 @@ Page({
       return;
     }
 
+    if (msg.type === 'tts_audio' && msg.audio) {
+      this.ttsQueue.push(msg.audio);
+      this.playNextTts();
+      return;
+    }
+
     if (msg.type === 'summary_loading') {
       this.setData({ summaryLoading: true });
       return;
@@ -219,6 +258,41 @@ Page({
     }
   },
 
+  playNextTts() {
+    if (this.ttsPlaying || !this.ttsQueue.length) return;
+    this.ttsPlaying = true;
+    const audio = this.ttsQueue.shift();
+    const filePath = `${wx.env.USER_DATA_PATH}/translation-${Date.now()}-${this.ttsSerial++}.wav`;
+    const fs = wx.getFileSystemManager();
+    fs.writeFile({
+      filePath,
+      data: audio,
+      encoding: 'base64',
+      success: () => {
+        const player = wx.createInnerAudioContext();
+        this.ttsPlayer = player;
+        player.src = filePath;
+        const done = () => {
+          player.destroy();
+          fs.unlink({ filePath, fail: () => {} });
+          this.ttsPlaying = false;
+          this.playNextTts();
+        };
+        player.onEnded(done);
+        player.onError((err) => {
+          console.error('译音播放失败', err);
+          done();
+        });
+        player.play();
+      },
+      fail: (err) => {
+        console.error('译音文件写入失败', err);
+        this.ttsPlaying = false;
+        this.playNextTts();
+      },
+    });
+  },
+
   endSession() {
     if (this.data.recording) this.recorder.stop();
     if (this.socketOpen) {
@@ -231,5 +305,6 @@ Page({
 
   onUnload() {
     this.endSession();
+    if (this.ttsPlayer) this.ttsPlayer.destroy();
   },
 });
