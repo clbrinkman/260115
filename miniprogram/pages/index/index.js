@@ -4,6 +4,8 @@ const { SERVER_URL, TOKEN } = require('../../utils/config');
 const SPEAKER_CLASSES = Array.from({ length: 12 }, (_, i) => `c${i}`);
 const MAX_RENDERED_ITEMS = 300;
 const MAX_RECONNECT_DELAY = 15000;
+// AST 会按语义返回短句；前端等待一个明确气口，再把同一说话人的短句作为整段提交。
+const TURN_GAP_MS = 1100;
 
 Page({
   data: {
@@ -50,6 +52,12 @@ Page({
     this.reconnectAttempts = 0;
     this.reconnectTimer = null;
     this.sessionEpoch = 0;
+    this.segmentToParagraph = new Map();
+    this.segmentTranslations = new Map();
+    this.paragraphs = new Map();
+    this.currentParagraph = null;
+    this.turnOpen = false;
+    this.turnCommitTimer = null;
 
     this.recorder.onFrameRecorded((res) => {
       this.audioFrameCount += 1;
@@ -152,6 +160,7 @@ Page({
         this.setData({ connecting: true, statusText: '连接中…', items: [], interim: null });
         this.speakerMap.clear();
         this.transcript = [];
+        this.resetTurnState();
         this.clearTtsPlayback();
         this.connect();
       },
@@ -218,6 +227,7 @@ Page({
 
   pause() {
     this.wantRecording = false;
+    this.commitTurn();
     if (this.recorderActive) this.recorder.stop();
     this.setData({
       recording: false,
@@ -248,19 +258,39 @@ Page({
     }
 
     if (msg.type === 'interim') {
+      clearTimeout(this.turnCommitTimer);
       let items = this.data.items.slice();
-      const definiteSet = new Set(items.map((i) => i.id));
       let interimText = '';
       let interimSpeaker = null;
       for (const u of msg.utterances) {
-        const itemId = `${this.sessionEpoch}-${u.id}`;
+        const segmentId = `${this.sessionEpoch}-${u.id}`;
         if (u.definite) {
-          if (!definiteSet.has(itemId)) {
-            items.push({ id: itemId, zh: u.text, en: '', ...this.speakerStyle(u.speaker) });
-            definiteSet.add(itemId);
+          let paragraph = this.currentParagraph;
+          if (paragraph && paragraph.speaker !== u.speaker) {
+            this.commitTurn();
+            paragraph = null;
+          }
+          if (!paragraph) {
+            paragraph = {
+              id: `turn-${segmentId}`,
+              speaker: u.speaker,
+              segments: [],
+            };
+            this.currentParagraph = paragraph;
+            this.paragraphs.set(paragraph.id, paragraph);
+            items.push({ id: paragraph.id, zh: '', en: '', ...this.speakerStyle(u.speaker) });
+          }
+          this.turnOpen = true;
+          if (!this.segmentToParagraph.has(segmentId)) {
+            paragraph.segments.push({ id: segmentId, zh: u.text });
+            this.segmentToParagraph.set(segmentId, paragraph.id);
             this.transcript.push({ speaker: u.speaker, text: u.text });
           }
+          const zh = paragraph.segments.map((part) => part.zh).join('');
+          items = items.map((item) => item.id === paragraph.id ? { ...item, zh } : item);
+          this.scheduleTurnCommit();
         } else {
+          this.turnOpen = true;
           interimText += u.text;
           interimSpeaker = u.speaker;
         }
@@ -279,12 +309,19 @@ Page({
     }
 
     if (msg.type === 'translation') {
-      const itemId = `${this.sessionEpoch}-${msg.id}`;
+      const segmentId = `${this.sessionEpoch}-${msg.id}`;
+      const paragraphId = this.segmentToParagraph.get(segmentId);
+      if (paragraphId) this.segmentTranslations.set(segmentId, msg.en || '');
+      const paragraph = this.paragraphs.get(paragraphId);
+      const en = paragraph
+        ? paragraph.segments.map((part) => this.segmentTranslations.get(part.id) || '').filter(Boolean).join(' ')
+        : msg.en;
+      const itemId = paragraphId || segmentId;
       const found = this.data.items.some((i) => i.id === itemId);
       let items = found
-        ? this.data.items.map((i) => (i.id === itemId ? { ...i, en: msg.en } : i))
+        ? this.data.items.map((i) => (i.id === itemId ? { ...i, en } : i))
         : // 译文先于原文到达的兜底：直接补一条
-          [...this.data.items, { id: itemId, zh: msg.zh, en: msg.en, ...this.speakerStyle(null) }];
+          [...this.data.items, { id: itemId, zh: msg.zh, en, ...this.speakerStyle(null) }];
       if (items.length > MAX_RENDERED_ITEMS) items = items.slice(-MAX_RENDERED_ITEMS);
       const seq = this.data.seq + 1;
       this.setData({ items, seq, scrollInto: `tail-${seq}` });
@@ -293,7 +330,8 @@ Page({
 
     if (msg.type === 'tts_audio' && msg.audio) {
       this.ttsQueue.push({ audio: msg.audio, format: msg.format || 'ogg' });
-      this.playNextTts();
+      // 讲话过程中只缓存译音；检测到气口后再连续播放整段。
+      if (!this.turnOpen) this.playNextTts();
       return;
     }
 
@@ -327,7 +365,7 @@ Page({
   },
 
   playNextTts() {
-    if (this.ttsPlaying || !this.ttsQueue.length) return;
+    if (this.turnOpen || this.ttsPlaying || !this.ttsQueue.length) return;
     this.ttsPlaying = true;
     clearTimeout(this.micResumeTimer);
     if (this.data.audioMode === 'speaker') {
@@ -400,6 +438,31 @@ Page({
     }
   },
 
+  scheduleTurnCommit() {
+    clearTimeout(this.turnCommitTimer);
+    this.turnCommitTimer = setTimeout(() => this.commitTurn(), TURN_GAP_MS);
+  },
+
+  commitTurn() {
+    clearTimeout(this.turnCommitTimer);
+    this.turnCommitTimer = null;
+    if (!this.turnOpen && !this.currentParagraph) return;
+    this.turnOpen = false;
+    this.currentParagraph = null;
+    this.setData({ interim: null });
+    this.playNextTts();
+  },
+
+  resetTurnState() {
+    clearTimeout(this.turnCommitTimer);
+    this.turnCommitTimer = null;
+    this.turnOpen = false;
+    this.currentParagraph = null;
+    this.segmentToParagraph.clear();
+    this.segmentTranslations.clear();
+    this.paragraphs.clear();
+  },
+
   endSession() {
     this.wantRecording = false;
     clearTimeout(this.reconnectTimer);
@@ -415,6 +478,7 @@ Page({
 
   onUnload() {
     this.unloading = true;
+    this.resetTurnState();
     this.endSession();
     this.clearTtsPlayback();
   },
