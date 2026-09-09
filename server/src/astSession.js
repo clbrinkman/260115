@@ -84,7 +84,7 @@ class AstSession {
         event: EventType.StartSession,
         user: { uid: 'meeting-translator', platform: 'miniprogram' },
         sourceAudio: { format: 'pcm', rate: 16000, bits: 16, channel: 1 },
-        targetAudio: { format: 'pcm', rate: 24000, bits: 16, channel: 1 },
+        targetAudio: { format: 'ogg_opus', rate: 24000, bits: 16, channel: 1 },
         request: {
           mode: 's2s',
           sourceLanguage: process.env.SOURCE_LANG || 'zh',
@@ -151,8 +151,8 @@ class AstSession {
     }
     if (ev === EventType.TTSSentenceEnd) {
       if (this.ttsChunks.length) {
-        const pcm = Buffer.concat(this.ttsChunks);
-        this.send({ type: 'tts_audio', format: 'wav', audio: pcmToWav(pcm, 24000) });
+        const ogg = Buffer.concat(this.ttsChunks);
+        this.send({ type: 'tts_audio', format: 'ogg', audio: ogg.toString('base64') });
         this.ttsChunks = [];
       }
       return;
@@ -242,24 +242,6 @@ class AstSession {
     if (this.upstream && this.upstream.readyState === WebSocket.OPEN) this.upstream.close();
     this.upstream = null;
   }
-}
-
-function pcmToWav(pcm, sampleRate) {
-  const wav = Buffer.alloc(44 + pcm.length);
-  wav.write('RIFF', 0);
-  wav.writeUInt32LE(36 + pcm.length, 4);
-  wav.write('WAVEfmt ', 8);
-  wav.writeUInt32LE(16, 16);
-  wav.writeUInt16LE(1, 20);
-  wav.writeUInt16LE(1, 22);
-  wav.writeUInt32LE(sampleRate, 24);
-  wav.writeUInt32LE(sampleRate * 2, 28);
-  wav.writeUInt16LE(2, 32);
-  wav.writeUInt16LE(16, 34);
-  wav.write('data', 36);
-  wav.writeUInt32LE(pcm.length, 40);
-  pcm.copy(wav, 44);
-  return wav.toString('base64');
 }
 
 module.exports = { AstSession };

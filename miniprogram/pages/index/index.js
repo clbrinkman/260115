@@ -241,7 +241,7 @@ Page({
     }
 
     if (msg.type === 'tts_audio' && msg.audio) {
-      this.ttsQueue.push(msg.audio);
+      this.ttsQueue.push({ audio: msg.audio, format: msg.format || 'ogg' });
       this.playNextTts();
       return;
     }
@@ -277,12 +277,12 @@ Page({
       this.suppressMicUpload = true;
       this.setData({ statusText: '播放译音 · 防回声中' });
     }
-    const audio = this.ttsQueue.shift();
-    const filePath = `${wx.env.USER_DATA_PATH}/translation-${Date.now()}-${this.ttsSerial++}.wav`;
+    const item = this.ttsQueue.shift();
+    const filePath = `${wx.env.USER_DATA_PATH}/translation-${Date.now()}-${this.ttsSerial++}.${item.format}`;
     const fs = wx.getFileSystemManager();
     fs.writeFile({
       filePath,
-      data: audio,
+      data: item.audio,
       encoding: 'base64',
       success: () => {
         const player = wx.createInnerAudioContext();
