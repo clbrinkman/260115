@@ -43,6 +43,7 @@ Page({
     this.ttsSerial = 0;
     this.suppressMicUpload = false;
     this.micResumeTimer = null;
+    this.ttsWatchdog = null;
     this.recorderActive = false;
     this.wantRecording = false;
     this.unloading = false;
@@ -310,13 +311,18 @@ Page({
     }
 
     if (msg.type === 'error') {
-      this.pause();
-      this.setData({ statusText: `识别出错: ${msg.message || msg.code}` });
+      const detail = msg.message || msg.code || '未知错误';
+      this.setData({ statusText: `识别出错，正在恢复: ${detail}`, connecting: true });
+      // 保持用户的录音意图，通过关闭客户端连接触发完整会话重建。
+      if (this.socketTask) this.socketTask.close();
       return;
     }
 
-    if (msg.type === 'asr_closed' && this.data.recording) {
-      this.setData({ recording: false, paused: true, statusText: '上游已断开 · 点击重连' });
+    if (msg.type === 'asr_closed' && this.wantRecording) {
+      this.setData({ recording: false, connecting: true, statusText: '识别服务中断，正在恢复…' });
+      // 客户端 WS 仍可能是 OPEN；必须关闭它才能创建新的豆包 AstSession。
+      if (this.socketTask) this.socketTask.close();
+      return;
     }
   },
 
@@ -343,6 +349,7 @@ Page({
         const done = () => {
           if (finished) return;
           finished = true;
+          clearTimeout(this.ttsWatchdog);
           if (this.ttsPlayer !== player) return;
           this.ttsPlayer = null;
           player.destroy();
@@ -364,6 +371,12 @@ Page({
           done();
         });
         player.play();
+        // 少数真机不触发 ended/error，兜底释放防回声静音状态。
+        clearTimeout(this.ttsWatchdog);
+        this.ttsWatchdog = setTimeout(() => {
+          console.error('译音播放超时，已自动恢复麦克风');
+          done();
+        }, 45000);
       },
       fail: (err) => {
         console.error('译音文件写入失败', err);
@@ -376,6 +389,7 @@ Page({
 
   clearTtsPlayback() {
     clearTimeout(this.micResumeTimer);
+    clearTimeout(this.ttsWatchdog);
     this.ttsQueue = [];
     this.ttsPlaying = false;
     this.suppressMicUpload = false;
