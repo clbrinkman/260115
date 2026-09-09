@@ -17,6 +17,7 @@ Page({
     summaryVisible: false,
     summaryLoading: false,
     summaryText: '',
+    audioMode: 'speaker', // speaker: 外放半双工防回声；headphones: 耳机全双工
   },
 
   onLoad() {
@@ -29,10 +30,11 @@ Page({
     this.ttsQueue = [];
     this.ttsPlaying = false;
     this.ttsSerial = 0;
+    this.suppressMicUpload = false;
 
     this.recorder.onFrameRecorded((res) => {
-      if (this.socketOpen && this.data.recording) {
-        this.audioFrameCount += 1;
+      this.audioFrameCount += 1;
+      if (this.socketOpen && this.data.recording && !this.suppressMicUpload) {
         wx.sendSocketMessage({ data: res.frameBuffer });
       }
     });
@@ -70,6 +72,16 @@ Page({
 
   toggleTheme() {
     this.setData({ theme: this.data.theme === 'dark' ? 'light' : 'dark' });
+  },
+
+  toggleAudioMode() {
+    const audioMode = this.data.audioMode === 'speaker' ? 'headphones' : 'speaker';
+    this.suppressMicUpload = audioMode === 'speaker' && this.ttsPlaying;
+    this.setData({ audioMode });
+    wx.showToast({
+      title: audioMode === 'speaker' ? '外放防回声' : '耳机全双工',
+      icon: 'none',
+    });
   },
 
   onSummary() {
@@ -261,6 +273,10 @@ Page({
   playNextTts() {
     if (this.ttsPlaying || !this.ttsQueue.length) return;
     this.ttsPlaying = true;
+    if (this.data.audioMode === 'speaker') {
+      this.suppressMicUpload = true;
+      this.setData({ statusText: '播放译音 · 防回声中' });
+    }
     const audio = this.ttsQueue.shift();
     const filePath = `${wx.env.USER_DATA_PATH}/translation-${Date.now()}-${this.ttsSerial++}.wav`;
     const fs = wx.getFileSystemManager();
@@ -276,7 +292,15 @@ Page({
           player.destroy();
           fs.unlink({ filePath, fail: () => {} });
           this.ttsPlaying = false;
-          this.playNextTts();
+          if (this.ttsQueue.length) {
+            this.playNextTts();
+          } else {
+            // 扬声器和麦克风之间存在声学尾音，稍等再恢复上传。
+            setTimeout(() => {
+              this.suppressMicUpload = false;
+              if (this.data.recording) this.setData({ statusText: '转写中…' });
+            }, this.data.audioMode === 'speaker' ? 350 : 0);
+          }
         };
         player.onEnded(done);
         player.onError((err) => {
@@ -288,6 +312,7 @@ Page({
       fail: (err) => {
         console.error('译音文件写入失败', err);
         this.ttsPlaying = false;
+        this.suppressMicUpload = false;
         this.playNextTts();
       },
     });
