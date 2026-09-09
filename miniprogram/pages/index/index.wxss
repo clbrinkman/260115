@@ -84,6 +84,7 @@
   padding: 8rpx;
 }
 
+.nav-left,
 .nav-right {
   display: flex;
   align-items: center;
