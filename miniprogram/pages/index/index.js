@@ -2,6 +2,8 @@ const { SERVER_URL, TOKEN } = require('../../utils/config');
 
 // R ColorBrewer Set3 12 色，见 index.wxss .c0~.c11
 const SPEAKER_CLASSES = Array.from({ length: 12 }, (_, i) => `c${i}`);
+const MAX_RENDERED_ITEMS = 300;
+const MAX_RECONNECT_DELAY = 15000;
 
 Page({
   data: {
@@ -41,6 +43,12 @@ Page({
     this.ttsSerial = 0;
     this.suppressMicUpload = false;
     this.micResumeTimer = null;
+    this.recorderActive = false;
+    this.wantRecording = false;
+    this.unloading = false;
+    this.reconnectAttempts = 0;
+    this.reconnectTimer = null;
+    this.sessionEpoch = 0;
 
     this.recorder.onFrameRecorded((res) => {
       this.audioFrameCount += 1;
@@ -49,6 +57,7 @@ Page({
       }
     });
     this.recorder.onStart(() => {
+      this.recorderActive = true;
       this.audioFrameCount = 0;
       clearTimeout(this.audioFrameTimer);
       this.setData({ recording: true, paused: false, statusText: '转写中…' });
@@ -58,7 +67,15 @@ Page({
         }
       }, 3000);
     });
-    this.recorder.onStop(() => clearTimeout(this.audioFrameTimer));
+    this.recorder.onStop(() => {
+      this.recorderActive = false;
+      clearTimeout(this.audioFrameTimer);
+      // 微信单次录音有时长上限；到期后在同一识别会话内自动续录。
+      if (this.wantRecording && this.socketOpen && !this.unloading) {
+        this.setData({ statusText: '正在无缝续录…' });
+        setTimeout(() => this.startRecorder(), 120);
+      }
+    });
     this.recorder.onError((err) => {
       this.setData({ statusText: `录音错误: ${err.errMsg}`, recording: false, paused: false });
     });
@@ -72,11 +89,7 @@ Page({
 
   onSummary() {
     this.setData({ summaryVisible: true, summaryLoading: true, summaryText: '' });
-    if (this.socketOpen) {
-      this.sendSocket(JSON.stringify({ type: 'summarize' }));
-      return;
-    }
-    // 会话已结束：用本地累积的转写走 HTTP 接口换纪要
+    // 始终使用客户端完整转写；断线重连后服务端只持有最近一段会话。
     if (!this.transcript.length) {
       this.setData({ summaryLoading: false, summaryText: '还没有转写内容。' });
       return;
@@ -119,6 +132,7 @@ Page({
   },
 
   startRecorder() {
+    if (this.recorderActive || !this.wantRecording || !this.socketOpen) return;
     this.recorder.start({
       duration: 600000,
       sampleRate: 16000,
@@ -133,6 +147,7 @@ Page({
     wx.authorize({
       scope: 'scope.record',
       success: () => {
+        this.wantRecording = true;
         this.setData({ connecting: true, statusText: '连接中…', items: [], interim: null });
         this.speakerMap.clear();
         this.transcript = [];
@@ -154,6 +169,7 @@ Page({
   },
 
   connect() {
+    clearTimeout(this.reconnectTimer);
     const previousTask = this.socketTask;
     this.socketTask = null;
     if (previousTask) previousTask.close();
@@ -164,6 +180,7 @@ Page({
     task.onOpen(() => {
       if (this.socketTask !== task) return;
       this.socketOpen = true;
+      this.reconnectAttempts = 0;
       this.sendSocket(JSON.stringify({ type: 'start' }));
     });
     task.onMessage((res) => {
@@ -177,12 +194,20 @@ Page({
     task.onError(() => {
       if (this.socketTask !== task) return;
       this.socketOpen = false;
-      this.setData({ statusText: '连接失败，检查服务器地址', connecting: false });
+      this.setData({ statusText: '网络连接异常，正在重试…', connecting: true });
+      task.close();
     });
     task.onClose(() => {
       if (this.socketTask !== task) return;
       this.socketOpen = false;
-      this.setData({ recording: false, paused: false, statusText: '连接已断开' });
+      if (this.recorderActive) this.recorder.stop();
+      if (this.wantRecording && !this.unloading) {
+        const delay = Math.min(1000 * (2 ** this.reconnectAttempts++), MAX_RECONNECT_DELAY);
+        this.setData({ recording: false, connecting: true, statusText: '连接中断，正在重连…' });
+        this.reconnectTimer = setTimeout(() => this.connect(), delay);
+      } else {
+        this.setData({ recording: false, connecting: false, statusText: '连接已断开' });
+      }
     });
   },
 
@@ -191,7 +216,8 @@ Page({
   },
 
   pause() {
-    this.recorder.stop();
+    this.wantRecording = false;
+    if (this.recorderActive) this.recorder.stop();
     this.setData({
       recording: false,
       paused: true,
@@ -201,6 +227,7 @@ Page({
   },
 
   resume() {
+    this.wantRecording = true;
     if (!this.socketOpen) {
       // 暂停太久上游可能已断开，重新开一条会话（保留字幕不清屏）
       this.setData({ connecting: true, statusText: '重新连接…' });
@@ -213,21 +240,23 @@ Page({
 
   onServerMessage(msg) {
     if (msg.type === 'session_started') {
+      this.sessionEpoch += 1;
       this.startRecorder();
       this.setData({ connecting: false, statusText: '正在启动麦克风…' });
       return;
     }
 
     if (msg.type === 'interim') {
-      const items = this.data.items.slice();
+      let items = this.data.items.slice();
       const definiteSet = new Set(items.map((i) => i.id));
       let interimText = '';
       let interimSpeaker = null;
       for (const u of msg.utterances) {
+        const itemId = `${this.sessionEpoch}-${u.id}`;
         if (u.definite) {
-          if (!definiteSet.has(u.id)) {
-            items.push({ id: u.id, zh: u.text, en: '', ...this.speakerStyle(u.speaker) });
-            definiteSet.add(u.id);
+          if (!definiteSet.has(itemId)) {
+            items.push({ id: itemId, zh: u.text, en: '', ...this.speakerStyle(u.speaker) });
+            definiteSet.add(itemId);
             this.transcript.push({ speaker: u.speaker, text: u.text });
           }
         } else {
@@ -236,6 +265,7 @@ Page({
         }
       }
       const seq = this.data.seq + 1;
+      if (items.length > MAX_RENDERED_ITEMS) items = items.slice(-MAX_RENDERED_ITEMS);
       this.setData({
         items,
         interim: interimText
@@ -248,11 +278,13 @@ Page({
     }
 
     if (msg.type === 'translation') {
-      const found = this.data.items.some((i) => i.id === msg.id);
-      const items = found
-        ? this.data.items.map((i) => (i.id === msg.id ? { ...i, en: msg.en } : i))
+      const itemId = `${this.sessionEpoch}-${msg.id}`;
+      const found = this.data.items.some((i) => i.id === itemId);
+      let items = found
+        ? this.data.items.map((i) => (i.id === itemId ? { ...i, en: msg.en } : i))
         : // 译文先于原文到达的兜底：直接补一条
-          [...this.data.items, { id: msg.id, zh: msg.zh, en: msg.en, ...this.speakerStyle(null) }];
+          [...this.data.items, { id: itemId, zh: msg.zh, en: msg.en, ...this.speakerStyle(null) }];
+      if (items.length > MAX_RENDERED_ITEMS) items = items.slice(-MAX_RENDERED_ITEMS);
       const seq = this.data.seq + 1;
       this.setData({ items, seq, scrollInto: `tail-${seq}` });
       return;
@@ -355,7 +387,9 @@ Page({
   },
 
   endSession() {
-    if (this.data.recording) this.recorder.stop();
+    this.wantRecording = false;
+    clearTimeout(this.reconnectTimer);
+    if (this.recorderActive) this.recorder.stop();
     if (this.socketOpen) {
       const task = this.socketTask;
       task.send({
@@ -366,6 +400,7 @@ Page({
   },
 
   onUnload() {
+    this.unloading = true;
     this.endSession();
     this.clearTtsPlayback();
   },
