@@ -5,8 +5,6 @@
         <view class="live-dot"></view>LIVE
       </view>
       <view class="summary-entry" bindtap="onSummary">✦ 纪要</view>
-    </view>
-    <view class="nav-right">
       <view class="theme-toggle" bindtap="toggleTheme">{{theme === 'dark' ? '☾' : '☀'}}</view>
     </view>
   </view>

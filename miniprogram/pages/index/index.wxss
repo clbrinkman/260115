@@ -50,7 +50,7 @@
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   padding: 20rpx 32rpx;
   min-height: 64rpx;
   box-sizing: border-box;
@@ -84,8 +84,7 @@
   padding: 8rpx;
 }
 
-.nav-left,
-.nav-right {
+.nav-left {
   display: flex;
   align-items: center;
   gap: 16rpx;
