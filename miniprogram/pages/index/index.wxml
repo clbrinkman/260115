@@ -1,13 +1,9 @@
 <view class="container theme-{{theme}}">
-  <view class="navbar">
-    <view class="booth">同传间</view>
+  <view class="navbar" style="padding-right: {{menuSafeRight}}px;">
     <view class="live {{recording ? 'on' : 'off'}}">
       <view class="live-dot"></view>LIVE
     </view>
     <view class="nav-right">
-      <view class="audio-mode" bindtap="toggleAudioMode">
-        {{audioMode === 'speaker' ? '◉ 外放防回声' : '◉ 耳机全双工'}}
-      </view>
       <view class="summary-entry" bindtap="onSummary">✦ 纪要</view>
       <view class="theme-toggle" bindtap="toggleTheme">{{theme === 'dark' ? '☾' : '☀'}}</view>
     </view>

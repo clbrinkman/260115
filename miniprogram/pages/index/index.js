@@ -18,9 +18,18 @@ Page({
     summaryLoading: false,
     summaryText: '',
     audioMode: 'speaker', // speaker: 外放半双工防回声；headphones: 耳机全双工
+    menuSafeRight: 16,
   },
 
   onLoad() {
+    // 为不同机型右上角的微信胶囊按钮动态预留空间。
+    try {
+      const menu = wx.getMenuButtonBoundingClientRect();
+      const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+      this.setData({ menuSafeRight: Math.max(16, info.windowWidth - menu.left + 8) });
+    } catch (e) {
+      // 旧基础库保留默认边距。
+    }
     this.recorder = wx.getRecorderManager();
     this.socketOpen = false;
     this.audioFrameCount = 0;
@@ -72,16 +81,6 @@ Page({
 
   toggleTheme() {
     this.setData({ theme: this.data.theme === 'dark' ? 'light' : 'dark' });
-  },
-
-  toggleAudioMode() {
-    const audioMode = this.data.audioMode === 'speaker' ? 'headphones' : 'speaker';
-    this.suppressMicUpload = audioMode === 'speaker' && this.ttsPlaying;
-    this.setData({ audioMode });
-    wx.showToast({
-      title: audioMode === 'speaker' ? '外放防回声' : '耳机全双工',
-      icon: 'none',
-    });
   },
 
   onSummary() {
